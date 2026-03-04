@@ -95,7 +95,6 @@ public final class PGLite implements AutoCloseable {
 
             int channel = exports.getChannel();
             this.bufferAddr = exports.getBufferAddr(channel);
-            // System.err.println("PGLite: channel=" + channel + " bufferAddr=" + bufferAddr);
         } catch (IOException e) {
             throw new RuntimeException("Failed to initialize PGLite", e);
         }

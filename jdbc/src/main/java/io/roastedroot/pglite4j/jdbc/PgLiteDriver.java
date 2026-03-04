@@ -163,59 +163,14 @@ public final class PgLiteDriver implements Driver {
                 OutputStream out = socket.getOutputStream();
                 byte[] buf = new byte[65536];
 
-                String connName = Thread.currentThread().getName();
-                System.err.println("[pglite4j] " + connName + " starting startup");
                 handleStartup(in, out, buf);
-                System.err.println("[pglite4j] " + connName + " startup complete");
 
-                int msgCount = 0;
                 while (running) {
                     int n = in.read(buf);
                     if (n <= 0) {
-                        System.err.println(
-                                "[pglite4j] "
-                                        + connName
-                                        + " read returned "
-                                        + n
-                                        + " (EOF), closing");
                         break;
                     }
                     byte[] message = Arrays.copyOf(buf, n);
-                    msgCount++;
-                    // Try to extract SQL from message
-                    String debugMsg = "";
-                    if (message.length > 5 && message[0] == 'Q') {
-                        // Simple Query: Q + len(4) + query\0
-                        debugMsg = new String(message, 5, Math.min(message.length - 6, 200));
-                    } else if (message.length > 5 && message[0] == 'P') {
-                        // Parse: P + len(4) + stmtName\0 + query\0 + ...
-                        int nameEnd = 5;
-                        while (nameEnd < message.length && message[nameEnd] != 0) {
-                            nameEnd++;
-                        }
-                        if (nameEnd + 1 < message.length) {
-                            int qStart = nameEnd + 1;
-                            int qEnd = qStart;
-                            while (qEnd < message.length && message[qEnd] != 0) {
-                                qEnd++;
-                            }
-                            debugMsg =
-                                    "PARSE: "
-                                            + new String(
-                                                    message, qStart, Math.min(qEnd - qStart, 200));
-                        }
-                    }
-                    System.err.println(
-                            "[pglite4j] "
-                                    + connName
-                                    + " msg#"
-                                    + msgCount
-                                    + " len="
-                                    + n
-                                    + " type="
-                                    + (char) message[0]
-                                    + " "
-                                    + debugMsg);
                     byte[] response;
                     synchronized (pgLock) {
                         response = pgLite.execProtocolRaw(message);
@@ -225,14 +180,8 @@ public final class PgLiteDriver implements Driver {
                         out.flush();
                     }
                 }
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
                 // one connection failure must not crash other connections
-                System.err.println("[pglite4j] IOException in handleConnection: " + e);
-                e.printStackTrace(System.err);
-            } catch (RuntimeException e) {
-                // protect other connections from PGLite errors
-                System.err.println("[pglite4j] RuntimeException in handleConnection: " + e);
-                e.printStackTrace(System.err);
             } finally {
                 activeSockets.remove(socket);
                 try {
