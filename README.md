@@ -7,7 +7,7 @@ Embedded PostgreSQL in plain Java bytecode. No containers, no native binaries, n
 
 ## How it works
 
-`pglite4j` bundles a full PostgreSQL 17 instance compiled to WebAssembly (WASI) and runs it directly inside the JVM via [Chicory](https://github.com/dylibso/chicory) (a pure-Java WebAssembly runtime). The JDBC driver opens an internal loopback socket and transparently bridges TCP to the WASM module's CMA (Channel Memory Access) shared memory, no network traffic ever leaves the process.
+`pglite4j` bundles a full PostgreSQL 17 instance compiled to WebAssembly (WASI) and runs it directly inside the JVM via [Chicory](https://github.com/dylibso/chicory) (a pure-Java WebAssembly runtime). The JDBC driver opens an internal loopback socket and transparently bridges TCP to the WASM module's CMA (Contiguous Memory Allocator) shared memory, no network traffic ever leaves the process.
 
 The build pipeline that produces the WASM binary runs inside Docker and chains several tools:
 
