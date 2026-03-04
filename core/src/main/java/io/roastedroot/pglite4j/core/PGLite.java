@@ -115,7 +115,23 @@ public final class PGLite implements AutoCloseable {
 
         for (int tick = 0; tick < 256; tick++) {
             boolean producedBefore = collectReply(replies);
-            exports.interactiveOne();
+            try {
+                exports.interactiveOne();
+            } catch (RuntimeException e) {
+                if (exports.pglCheckError() != 0) {
+                    // PostgreSQL hit an ERROR (e.g. relation not found).
+                    // pgl_on_error() set the WASM-side flag and the
+                    // instance trapped via __builtin_unreachable().
+                    // Recover: clean up PG error state and flush the
+                    // ErrorResponse + ReadyForQuery back through the wire.
+                    exports.clearError();
+                    exports.interactiveWrite(-1);
+                    exports.interactiveOne();
+                    collectReply(replies);
+                    break;
+                }
+                throw e;
+            }
             boolean producedAfter = collectReply(replies);
             if (!producedBefore && !producedAfter) {
                 break;

@@ -69,6 +69,37 @@ public class PGLiteTest {
     }
 
     @Test
+    public void errorRecovery() {
+        try (PGLite pg = PGLite.builder().build()) {
+            doHandshake(pg);
+
+            // 1. Valid query should succeed
+            byte[] r1 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 1;"));
+            assertNotNull(r1);
+            String data1 = PgWireCodec.parseDataRows(r1);
+            System.out.println("Before error: SELECT 1 => " + data1);
+            assertTrue(data1.contains("1"));
+
+            // 2. Invalid query — references a non-existent table.
+            //    Without error recovery this traps the WASM instance permanently.
+            byte[] r2 =
+                    pg.execProtocolRaw(
+                            PgWireCodec.queryMessage("SELECT * FROM nonexistent_table_xyz;"));
+            assertNotNull(r2);
+            System.out.println("Error response length: " + r2.length + " bytes");
+            // The response should contain an ErrorResponse (tag 'E')
+            assertTrue(r2.length > 0, "Expected non-empty error response");
+
+            // 3. Valid query should still work after the error
+            byte[] r3 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 2;"));
+            assertNotNull(r3);
+            String data3 = PgWireCodec.parseDataRows(r3);
+            System.out.println("After error: SELECT 2 => " + data3);
+            assertTrue(data3.contains("2"), "Instance should be reusable after SQL error");
+        }
+    }
+
+    @Test
     public void cmaBufferOverflow() {
         try (PGLite pg = PGLite.builder().build()) {
             doHandshake(pg);
@@ -99,6 +130,42 @@ public class PGLiteTest {
             String data = PgWireCodec.parseDataRows(r2);
             System.out.println("Post-overflow query: SELECT 42 => " + data);
             assertTrue(data.contains("42"), "Normal query should work after CMA overflow");
+        }
+    }
+
+    @Test
+    public void extendedProtocolErrorRecovery() {
+        try (PGLite pg = PGLite.builder().build()) {
+            doHandshake(pg);
+
+            // 1. Valid simple query first
+            byte[] r1 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 1;"));
+            assertNotNull(r1);
+            String data1 = PgWireCodec.parseDataRows(r1);
+            System.out.println("Extended proto test: SELECT 1 => " + data1);
+            assertTrue(data1.contains("1"));
+
+            // 2. Extended protocol batch (Parse+Bind+Describe+Execute+Sync)
+            //    for a query that will fail (nonexistent table).
+            //    This reproduces the Flyway hang: pgjdbc uses extended protocol
+            //    and the error recovery must send ReadyForQuery.
+            byte[] batch = PgWireCodec.extendedQueryBatch("SELECT * FROM nonexistent_table_xyz");
+            byte[] r2 = pg.execProtocolRaw(batch);
+            assertNotNull(r2);
+            System.out.println("Extended proto error response: " + r2.length + " bytes");
+            assertTrue(r2.length > 0, "Expected non-empty error response");
+            assertTrue(
+                    PgWireCodec.hasReadyForQuery(r2),
+                    "Expected ReadyForQuery after extended protocol error");
+
+            // 3. Valid query should still work (verifies no buffer corruption)
+            byte[] r3 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 2;"));
+            assertNotNull(r3);
+            String data3 = PgWireCodec.parseDataRows(r3);
+            System.out.println("After extended proto error: SELECT 2 => " + data3);
+            assertTrue(
+                    data3.contains("2"),
+                    "Instance should be reusable after extended protocol error");
         }
     }
 

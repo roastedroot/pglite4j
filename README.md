@@ -111,11 +111,12 @@ pglite4j/
 
 - [x] ~~**Only `memory://` is supported**~~ — persistent / file-backed databases are not planned; the WASM backend uses an in-memory virtual filesystem (ZeroFS) with no disk I/O, which is fundamental to the architecture
 - [x] ~~**Single connection only**~~ — multiple JDBC connections are now supported per database instance; requests are serialized through a single PGLite backend via a lock, so connection pools with `max-size > 1` work correctly (queries execute one at a time, not in parallel)
-- [ ] **No connection isolation** — PostgreSQL runs in single-user mode with one session; all connections share the same session state (transactions, prepared statements, session variables). Queries are serialized, so there is no data corruption, but concurrent transactions are not isolated from each other. This is fine for connection pools that use connections sequentially (borrow, use, return).
+- [x] ~~**Error recovery**~~ — both simple and extended query protocol errors are handled correctly; PostgreSQL errors trap the WASM instance and are caught by the Java side, which resets the backend state and drains stale protocol buffers so subsequent queries work cleanly
+- [ ] **No connection isolation** — PostgreSQL runs in single-user mode with one session; all connections share the same session state (transactions, session variables). Queries are serialized, so there is no data corruption, but concurrent transactions are not isolated from each other. This is fine for connection pools that use connections sequentially (borrow, use, return).
+- [ ] **Server-side prepared statements disabled** — because all connections share a single PostgreSQL backend, named prepared statements (`S_1`, `S_2`, …) would collide across connections. The driver sets `prepareThreshold=0` so pgjdbc always uses the unnamed prepared statement. This has no functional impact but means PostgreSQL cannot cache query plans across executions.
 - [ ] **Limited extensions** — only `plpgsql` and `dict_snowball` are bundled; adding more requires rebuilding the WASM binary
-- [ ] **Startup time** — first connection has some overhead it can be optimized more
+- [ ] **Startup time** — first connection has some overhead that can be optimized further
 - [ ] **Binary size** — the WASM binary + pgdata resources add several MBs to the classpath
-- [ ] **Error recovery** — `clear_error()` integration for automatic transaction recovery is not yet wired up
 
 ### CMA (Contiguous Memory Allocator)
 

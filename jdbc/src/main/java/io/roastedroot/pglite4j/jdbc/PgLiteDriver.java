@@ -72,6 +72,9 @@ public final class PgLiteDriver implements Driver {
         props.putIfAbsent("password", "password");
         props.setProperty("sslmode", "disable");
         props.setProperty("gssEncMode", "disable");
+        // All connections share one PG backend — named prepared statements
+        // would collide (S_1, S_2, ...).  Force unnamed statements only.
+        props.setProperty("prepareThreshold", "0");
         props.putIfAbsent("connectTimeout", "60");
 
         String pgUrl = "jdbc:postgresql://127.0.0.1:" + instance.getPort() + "/template1";
