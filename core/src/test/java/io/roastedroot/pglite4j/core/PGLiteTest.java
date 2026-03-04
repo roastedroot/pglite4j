@@ -17,7 +17,6 @@ public class PGLiteTest {
             assertTrue(result.length > 0);
 
             String data = PgWireCodec.parseDataRows(result);
-            System.out.println("SELECT 1 => " + data);
             assertTrue(data.contains("1"));
         }
     }
@@ -27,11 +26,9 @@ public class PGLiteTest {
         try (PGLite pg = PGLite.builder().build()) {
             doHandshake(pg);
 
-            // After handshake, queries should work
             byte[] result = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 42 AS answer;"));
             assertNotNull(result);
             String data = PgWireCodec.parseDataRows(result);
-            System.out.println("After handshake: SELECT 42 => " + data);
             assertTrue(data.contains("42"));
         }
     }
@@ -41,30 +38,48 @@ public class PGLiteTest {
         try (PGLite pg = PGLite.builder().build()) {
             doHandshake(pg);
 
-            // DDL via simple query protocol
             byte[] r1 =
                     pg.execProtocolRaw(
                             PgWireCodec.queryMessage("CREATE TABLE test (id INTEGER, name TEXT);"));
-            System.out.println("CREATE TABLE: " + r1.length + " bytes");
+            assertNotNull(r1);
 
-            // SERIAL column
             byte[] r2 =
                     pg.execProtocolRaw(
                             PgWireCodec.queryMessage(
                                     "CREATE TABLE test_serial (id SERIAL PRIMARY KEY, val TEXT);"));
-            System.out.println("CREATE TABLE SERIAL: " + r2.length + " bytes");
+            assertNotNull(r2);
 
-            // INSERT
             byte[] r3 =
                     pg.execProtocolRaw(
                             PgWireCodec.queryMessage("INSERT INTO test VALUES (1, 'hello');"));
-            System.out.println("INSERT: " + r3.length + " bytes");
+            assertNotNull(r3);
 
-            // SELECT
             byte[] r4 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT * FROM test;"));
             String data = PgWireCodec.parseDataRows(r4);
-            System.out.println("SELECT: " + data);
             assertTrue(data.contains("hello"));
+        }
+    }
+
+    @Test
+    public void errorRecovery() {
+        try (PGLite pg = PGLite.builder().build()) {
+            doHandshake(pg);
+
+            byte[] r1 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 1;"));
+            assertNotNull(r1);
+            String data1 = PgWireCodec.parseDataRows(r1);
+            assertTrue(data1.contains("1"));
+
+            byte[] r2 =
+                    pg.execProtocolRaw(
+                            PgWireCodec.queryMessage("SELECT * FROM nonexistent_table_xyz;"));
+            assertNotNull(r2);
+            assertTrue(r2.length > 0, "Expected non-empty error response");
+
+            byte[] r3 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 2;"));
+            assertNotNull(r3);
+            String data3 = PgWireCodec.parseDataRows(r3);
+            assertTrue(data3.contains("2"), "Instance should be reusable after SQL error");
         }
     }
 
@@ -74,19 +89,11 @@ public class PGLiteTest {
             doHandshake(pg);
 
             int bufSize = pg.getBufferSize();
-            System.out.println(
-                    "CMA buffer size: " + bufSize + " bytes (" + (bufSize / 1024) + " KB)");
-
-            // Generate a wire protocol response that exceeds the CMA buffer.
-            // repeat('x', N) returns an N-byte string in the DataRow message.
             int repeatLen = bufSize + 1000;
             String sql = "SELECT repeat('x', " + repeatLen + ");";
-            System.out.println("Query: SELECT repeat('x', " + repeatLen + ")");
 
             byte[] result = pg.execProtocolRaw(PgWireCodec.queryMessage(sql));
-            System.out.println("Response length: " + result.length + " bytes");
             assertNotNull(result);
-            // The response must contain the full string + wire protocol overhead
             assertTrue(
                     result.length > repeatLen,
                     "Expected response > " + repeatLen + " but got " + result.length);
@@ -94,11 +101,36 @@ public class PGLiteTest {
                     PgWireCodec.hasReadyForQuery(result),
                     "Expected ReadyForQuery in overflow response");
 
-            // Verify a normal query still works after the overflow
             byte[] r2 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 42;"));
             String data = PgWireCodec.parseDataRows(r2);
-            System.out.println("Post-overflow query: SELECT 42 => " + data);
             assertTrue(data.contains("42"), "Normal query should work after CMA overflow");
+        }
+    }
+
+    @Test
+    public void extendedProtocolErrorRecovery() {
+        try (PGLite pg = PGLite.builder().build()) {
+            doHandshake(pg);
+
+            byte[] r1 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 1;"));
+            assertNotNull(r1);
+            String data1 = PgWireCodec.parseDataRows(r1);
+            assertTrue(data1.contains("1"));
+
+            byte[] batch = PgWireCodec.extendedQueryBatch("SELECT * FROM nonexistent_table_xyz");
+            byte[] r2 = pg.execProtocolRaw(batch);
+            assertNotNull(r2);
+            assertTrue(r2.length > 0, "Expected non-empty error response");
+            assertTrue(
+                    PgWireCodec.hasReadyForQuery(r2),
+                    "Expected ReadyForQuery after extended protocol error");
+
+            byte[] r3 = pg.execProtocolRaw(PgWireCodec.queryMessage("SELECT 2;"));
+            assertNotNull(r3);
+            String data3 = PgWireCodec.parseDataRows(r3);
+            assertTrue(
+                    data3.contains("2"),
+                    "Instance should be reusable after extended protocol error");
         }
     }
 

@@ -158,4 +158,69 @@ public class PgLiteDriverTest {
         assertFalse(driver.acceptsURL("jdbc:postgresql://localhost/test"));
         assertFalse(driver.acceptsURL("jdbc:mysql://localhost/test"));
     }
+
+    @Test
+    @Order(10)
+    void namedDatabasesAreIndependent() throws SQLException {
+        try (Connection db1 = DriverManager.getConnection("jdbc:pglite:memory:db1");
+                Connection db2 = DriverManager.getConnection("jdbc:pglite:memory:db2")) {
+            try (Statement stmt = db1.createStatement()) {
+                stmt.execute("CREATE TABLE only_in_db1 (id INT)");
+            }
+            // Verify db2 does not have the table created on db1
+            try (Statement stmt = db2.createStatement();
+                    ResultSet rs =
+                            stmt.executeQuery(
+                                    "SELECT EXISTS ("
+                                            + "SELECT 1 FROM pg_class"
+                                            + " WHERE relname = 'only_in_db1'"
+                                            + " AND relkind = 'r')")) {
+                assertTrue(rs.next());
+                assertFalse(rs.getBoolean(1));
+            }
+        }
+    }
+
+    @Test
+    @Order(11)
+    void multipleConnectionsSameDatabase() throws SQLException {
+        String url = "jdbc:pglite:memory:multiconn";
+        try (Connection conn1 = DriverManager.getConnection(url);
+                Connection conn2 = DriverManager.getConnection(url)) {
+            try (Statement stmt = conn1.createStatement()) {
+                stmt.execute("CREATE TABLE shared_table (id INT, val TEXT)");
+                stmt.executeUpdate("INSERT INTO shared_table VALUES (1, 'hello')");
+            }
+            try (Statement stmt = conn2.createStatement();
+                    ResultSet rs = stmt.executeQuery("SELECT val FROM shared_table WHERE id = 1")) {
+                assertTrue(rs.next());
+                assertEquals("hello", rs.getString("val"));
+            }
+        }
+    }
+
+    @Test
+    @Order(12)
+    void connectionCloseDoesNotAffectOther() throws SQLException {
+        String url = "jdbc:pglite:memory:closetest";
+        Connection conn1 = DriverManager.getConnection(url);
+        Connection conn2 = DriverManager.getConnection(url);
+        try {
+            try (Statement stmt = conn1.createStatement()) {
+                stmt.execute("CREATE TABLE survive_close (id INT)");
+                stmt.executeUpdate("INSERT INTO survive_close VALUES (42)");
+            }
+            conn1.close();
+
+            try (Statement stmt = conn2.createStatement();
+                    ResultSet rs = stmt.executeQuery("SELECT id FROM survive_close")) {
+                assertTrue(rs.next());
+                assertEquals(42, rs.getInt(1));
+            }
+        } finally {
+            if (!conn2.isClosed()) {
+                conn2.close();
+            }
+        }
+    }
 }

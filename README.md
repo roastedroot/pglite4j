@@ -68,7 +68,7 @@ quarkus.datasource.jdbc.driver=io.roastedroot.pglite4j.jdbc.PgLiteDriver
 quarkus.datasource.username=postgres
 quarkus.datasource.password=password
 quarkus.datasource.jdbc.min-size=1
-quarkus.datasource.jdbc.max-size=1
+quarkus.datasource.jdbc.max-size=5
 quarkus.devservices.enabled=false
 quarkus.hibernate-orm.dialect=org.hibernate.dialect.PostgreSQLDialect
 quarkus.hibernate-orm.unsupported-properties."hibernate.boot.allow_jdbc_metadata_access"=false
@@ -82,18 +82,18 @@ spring.datasource.url=jdbc:pglite:memory://
 spring.datasource.driver-class-name=io.roastedroot.pglite4j.jdbc.PgLiteDriver
 spring.datasource.username=postgres
 spring.datasource.password=password
-spring.datasource.hikari.maximum-pool-size=1
+spring.datasource.hikari.maximum-pool-size=5
 spring.jpa.hibernate.ddl-auto=create-drop
 spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
 spring.jpa.properties.hibernate.boot.allow_jdbc_metadata_access=false
 ```
 
-### HikariCP - NOT TESTED
+### HikariCP
 
 ```java
 HikariConfig config = new HikariConfig();
 config.setJdbcUrl("jdbc:pglite:memory://");
-config.setMaximumPoolSize(1);
+config.setMaximumPoolSize(5);
 DataSource ds = new HikariDataSource(config);
 ```
 
@@ -109,12 +109,14 @@ pglite4j/
 
 ## Status and known limitations
 
-- [ ] **Only `memory://` is supported** — no persistent / file-backed databases yet
-- [ ] **Single connection only** — PGlite is single-threaded; connection pool max size must be 1
+- [x] ~~**Only `memory://` is supported**~~ — persistent / file-backed databases are not planned; the WASM backend uses an in-memory virtual filesystem (ZeroFS) with no disk I/O, which is fundamental to the architecture
+- [x] ~~**Single connection only**~~ — multiple JDBC connections are now supported per database instance; requests are serialized through a single PGLite backend via a lock, so connection pools with `max-size > 1` work correctly (queries execute one at a time, not in parallel)
+- [x] ~~**Error recovery**~~ — both simple and extended query protocol errors are handled correctly; PostgreSQL errors trap the WASM instance and are caught by the Java side, which resets the backend state and drains stale protocol buffers so subsequent queries work cleanly
+- [ ] **No connection isolation** — PostgreSQL runs in single-user mode with one session; all connections share the same session state (transactions, session variables). Queries are serialized, so there is no data corruption, but concurrent transactions are not isolated from each other. This is fine for connection pools that use connections sequentially (borrow, use, return).
+- [ ] **Server-side prepared statements disabled** — because all connections share a single PostgreSQL backend, named prepared statements (`S_1`, `S_2`, …) would collide across connections. The driver sets `prepareThreshold=0` so pgjdbc always uses the unnamed prepared statement. This has no functional impact but means PostgreSQL cannot cache query plans across executions.
 - [ ] **Limited extensions** — only `plpgsql` and `dict_snowball` are bundled; adding more requires rebuilding the WASM binary
-- [ ] **Startup time** — first connection has some overhead it can be optimized more
+- [ ] **Startup time** — first connection has some overhead that can be optimized further
 - [ ] **Binary size** — the WASM binary + pgdata resources add several MBs to the classpath
-- [ ] **Error recovery** — `clear_error()` integration for automatic transaction recovery is not yet wired up
 
 ### CMA (Contiguous Memory Allocator)
 

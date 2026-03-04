@@ -1,37 +1,36 @@
---- REL_17_5_WASM/src/backend/utils/error/elog.c
-+++ REL_17_5_WASM-pglite/src/backend/utils/error/elog.c
-@@ -348,12 +348,16 @@
- 	ErrorData  *edata;
- 	bool		output_to_server;
- 	bool		output_to_client = false;
-+#if defined(__EMSCRIPTEN__) || defined(__wasi__)
-+#   warning "FIXME: error levels"
-+#else
- 	int			i;
- 
- 	/*
- 	 * Check some cases in which we want to promote an error into a more
- 	 * severe error.  None of this logic applies for non-error messages.
- 	 */
-+
- 	if (elevel >= ERROR)
- 	{
- 		/*
-@@ -394,7 +398,7 @@
- 		for (i = 0; i <= errordata_stack_depth; i++)
- 			elevel = Max(elevel, errordata[i].elevel);
- 	}
--
-+#endif
- 	/*
- 	 * Now decide whether we need to process this report at all; if it's
- 	 * warning or less and not enabled for logging, just return false without
-@@ -539,7 +543,12 @@
- 		 */
- 
- 		recursion_depth--;
+--- a/src/backend/utils/error/elog.c
++++ b/src/backend/utils/error/elog.c
+@@ -85,6 +85,25 @@
+ #include "utils/ps_status.h"
+ #include "utils/varlena.h"
+
 +#if defined(__wasi__)
-+        fprintf(stderr, "# 547: PG_RE_THROW(ERROR : %d) ignored\r\n", recursion_depth);
++static volatile int pgl_error_flag = 0;
++
++/* Called from errfinish() instead of abort() on PG ERROR.
++   Sets flag so the host runtime can detect and recover. */
++static void pgl_on_error(void) {
++    pgl_error_flag = 1;
++}
++
++/* Exported: returns 1 if a PG error trapped, resets the flag.
++   Called by Java after catching a TrapException. */
++__attribute__((export_name("pgl_check_error")))
++int pgl_check_error(void) {
++    int val = pgl_error_flag;
++    pgl_error_flag = 0;
++    return val;
++}
++#endif
++
+ /* In this module, access gettext() via err_gettext() */
+ #undef _
+ #define _(x) err_gettext(x)
+@@ -546,7 +565,16 @@
+ 		recursion_depth--;
+ #if defined(__wasi__)
+         fprintf(stderr, "# 547: PG_RE_THROW(ERROR : %d) ignored\r\n", recursion_depth);
+-        abort();
 +        if (errordata_stack_depth >= 0) {
 +            ErrorData *__edata = &errordata[errordata_stack_depth];
 +            fprintf(stderr, "# PG ERROR [%s:%d] %s: %s\r\n",
@@ -40,30 +39,8 @@
 +                __edata->funcname ? __edata->funcname : "?",
 +                __edata->message ? __edata->message : "(no message)");
 +        }
-+        abort();
-+#else
++        pgl_on_error();
++        __builtin_unreachable();
+ #else
  		PG_RE_THROW();
-+#endif
- 	}
- 
- 	/* Emit the message to the right places */
-@@ -587,7 +596,11 @@
- 		 * FATAL termination.  The postmaster may or may not consider this
- 		 * worthy of panic, depending on which subprocess returns it.
- 		 */
-+#if defined(__EMSCRIPTEN__) || defined(__wasi__)
-+        puts("# 600: proc_exit(FATAL) ignored\r\n");
-+#else
- 		proc_exit(1);
-+#endif
- 	}
- 
- 	if (elevel >= PANIC)
-@@ -697,6 +710,7 @@
- 	 */
- 	if (edata->elevel >= ERROR)
- 	{
-+puts("#712");
- 		errfinish(filename, lineno, funcname);
- 		pg_unreachable();
- 	}
+ #endif

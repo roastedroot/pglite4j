@@ -1,0 +1,14 @@
+--- a/interactive_one.c
++++ b/interactive_one.c
+@@ -646,6 +646,11 @@
+     }
+     }
+ resume_on_error:
++    ignore_till_sync = false;
++    send_ready_for_query = true;
++    /* pglite: drain stale receive buffer left from the errored batch
++     * so the next pq_startmsgread() resets cleanly to new CMA data */
++    while (pq_buffer_remaining_data() > 0) pq_getbyte();
+     if (!is_repl) {
+ wire_flush:
+         if (!ClientAuthInProgress) {

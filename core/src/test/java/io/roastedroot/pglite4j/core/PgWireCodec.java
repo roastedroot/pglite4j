@@ -185,6 +185,128 @@ final class PgWireCodec {
         return sb.toString();
     }
 
+    // === Extended Query Protocol ===
+
+    /** Build a Parse ('P') message. */
+    static byte[] parseMessage(String stmtName, String sql) {
+        byte[] nameBytes = (stmtName + "\0").getBytes(StandardCharsets.UTF_8);
+        byte[] sqlBytes = (sql + "\0").getBytes(StandardCharsets.UTF_8);
+        int bodyLen = nameBytes.length + sqlBytes.length + 2; // 2 for numParamTypes
+        byte[] msg = new byte[1 + 4 + bodyLen];
+        msg[0] = 'P';
+        int len = 4 + bodyLen;
+        msg[1] = (byte) (len >> 24);
+        msg[2] = (byte) (len >> 16);
+        msg[3] = (byte) (len >> 8);
+        msg[4] = (byte) len;
+        int pos = 5;
+        System.arraycopy(nameBytes, 0, msg, pos, nameBytes.length);
+        pos += nameBytes.length;
+        System.arraycopy(sqlBytes, 0, msg, pos, sqlBytes.length);
+        pos += sqlBytes.length;
+        msg[pos] = 0;
+        msg[pos + 1] = 0; // 0 parameter types
+        return msg;
+    }
+
+    /** Build a Bind ('B') message with no parameters. */
+    static byte[] bindMessage(String portal, String stmtName) {
+        byte[] portalBytes = (portal + "\0").getBytes(StandardCharsets.UTF_8);
+        byte[] nameBytes = (stmtName + "\0").getBytes(StandardCharsets.UTF_8);
+        int bodyLen = portalBytes.length + nameBytes.length + 2 + 2 + 2;
+        byte[] msg = new byte[1 + 4 + bodyLen];
+        msg[0] = 'B';
+        int len = 4 + bodyLen;
+        msg[1] = (byte) (len >> 24);
+        msg[2] = (byte) (len >> 16);
+        msg[3] = (byte) (len >> 8);
+        msg[4] = (byte) len;
+        int pos = 5;
+        System.arraycopy(portalBytes, 0, msg, pos, portalBytes.length);
+        pos += portalBytes.length;
+        System.arraycopy(nameBytes, 0, msg, pos, nameBytes.length);
+        pos += nameBytes.length;
+        // 0 format codes, 0 parameters, 0 result format codes
+        msg[pos] = 0;
+        msg[pos + 1] = 0;
+        pos += 2;
+        msg[pos] = 0;
+        msg[pos + 1] = 0;
+        pos += 2;
+        msg[pos] = 0;
+        msg[pos + 1] = 0;
+        return msg;
+    }
+
+    /** Build a Describe ('D') message. */
+    static byte[] describeMessage(char type, String name) {
+        byte[] nameBytes = (name + "\0").getBytes(StandardCharsets.UTF_8);
+        int bodyLen = 1 + nameBytes.length;
+        byte[] msg = new byte[1 + 4 + bodyLen];
+        msg[0] = 'D';
+        int len = 4 + bodyLen;
+        msg[1] = (byte) (len >> 24);
+        msg[2] = (byte) (len >> 16);
+        msg[3] = (byte) (len >> 8);
+        msg[4] = (byte) len;
+        msg[5] = (byte) type;
+        System.arraycopy(nameBytes, 0, msg, 6, nameBytes.length);
+        return msg;
+    }
+
+    /** Build an Execute ('E') message. */
+    static byte[] executeMessage(String portal, int maxRows) {
+        byte[] portalBytes = (portal + "\0").getBytes(StandardCharsets.UTF_8);
+        int bodyLen = portalBytes.length + 4;
+        byte[] msg = new byte[1 + 4 + bodyLen];
+        msg[0] = 'E';
+        int len = 4 + bodyLen;
+        msg[1] = (byte) (len >> 24);
+        msg[2] = (byte) (len >> 16);
+        msg[3] = (byte) (len >> 8);
+        msg[4] = (byte) len;
+        int pos = 5;
+        System.arraycopy(portalBytes, 0, msg, pos, portalBytes.length);
+        pos += portalBytes.length;
+        msg[pos] = (byte) (maxRows >> 24);
+        msg[pos + 1] = (byte) (maxRows >> 16);
+        msg[pos + 2] = (byte) (maxRows >> 8);
+        msg[pos + 3] = (byte) maxRows;
+        return msg;
+    }
+
+    /** Build a Sync ('S') message. */
+    static byte[] syncMessage() {
+        return new byte[] {'S', 0, 0, 0, 4};
+    }
+
+    /** Build a complete extended query batch: Parse + Bind + Describe + Execute + Sync. */
+    static byte[] extendedQueryBatch(String sql) {
+        byte[] parse = parseMessage("", sql);
+        byte[] bind = bindMessage("", "");
+        byte[] describe = describeMessage('S', "");
+        byte[] execute = executeMessage("", 0);
+        byte[] sync = syncMessage();
+        byte[] batch =
+                new byte
+                        [parse.length
+                                + bind.length
+                                + describe.length
+                                + execute.length
+                                + sync.length];
+        int pos = 0;
+        System.arraycopy(parse, 0, batch, pos, parse.length);
+        pos += parse.length;
+        System.arraycopy(bind, 0, batch, pos, bind.length);
+        pos += bind.length;
+        System.arraycopy(describe, 0, batch, pos, describe.length);
+        pos += describe.length;
+        System.arraycopy(execute, 0, batch, pos, execute.length);
+        pos += execute.length;
+        System.arraycopy(sync, 0, batch, pos, sync.length);
+        return batch;
+    }
+
     private static String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) {
