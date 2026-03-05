@@ -111,6 +111,7 @@ DataSource ds = new HikariDataSource(config);
 - **Server-side prepared statements disabled** — all connections share a single backend, so named prepared statements would collide. The driver sets `prepareThreshold=0` to always use unnamed statements. This has no functional impact.
 - **Limited extensions** — only `plpgsql` and `dict_snowball` are bundled; adding more requires rebuilding the WASM binary.
 - **Binary size** — the WASM binary and pgdata resources add ~10 MB to the classpath.
+- **High memory usage** — each PGLite instance runs a full PostgreSQL backend in WASM linear memory. Expect significant heap consumption (1 GB+); make sure to size `-Xmx` accordingly.
 
 If any of these are limiting your use of the library, please [file an issue](https://github.com/roastedroot/pglite4j/issues) to discuss.
 

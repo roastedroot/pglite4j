@@ -61,6 +61,8 @@ jobs:
 
       - name: Build and test
         run: mvn -B install
+        env:
+          MAVEN_OPTS: -Xmx2g
 
       - name: Publish Test Report
         if: always()
