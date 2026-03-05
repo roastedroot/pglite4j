@@ -132,9 +132,9 @@
     </profile>
 
     <profile>
-      <id>java17</id>
+      <id>java21</id>
       <activation>
-        <jdk>[17,)</jdk>
+        <jdk>[21,)</jdk>
       </activation>
       <build>
         <plugins>
