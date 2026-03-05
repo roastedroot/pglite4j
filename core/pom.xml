@@ -71,17 +71,17 @@
             <configuration>
               <name>io.roastedroot.pglite4j.core.PGLiteModule</name>
               <wasmFile>../wasm-build/output/pglite.wasi</wasmFile>
-              <interpreterFallback>WARN</interpreterFallback>
-              <!-- <interpretedFunctions>
-                <function>2918</function>
-                <function>4335</function>
+              <!-- <interpreterFallback>WARN</interpreterFallback> -->
+              <interpretedFunctions>
+                <function>2919</function>
                 <function>4336</function>
-                <function>4494</function>
-                <function>4551</function>
-                <function>6394</function>
-                <function>6397</function>
-                <function>11038</function>
-              </interpretedFunctions> -->
+                <function>4337</function>
+                <function>4495</function>
+                <function>4552</function>
+                <function>6395</function>
+                <function>6398</function>
+                <function>11040</function>
+              </interpretedFunctions>
             </configuration>
           </execution>
         </executions>
@@ -111,20 +111,6 @@
               </target>
               <exportAntProperties>true</exportAntProperties>
             </configuration>
-          </execution>
-        </executions>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-checkstyle-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>checkstyle</id>
-            <goals>
-              <goal>check</goal>
-            </goals>
-            <phase>validate</phase>
           </execution>
         </executions>
       </plugin>
